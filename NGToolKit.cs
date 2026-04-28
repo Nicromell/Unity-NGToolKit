@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
@@ -16,16 +15,18 @@ public class NgToolBox : EditorWindow
     private Material SelectedMaterial;
     private int MaterialSlotIndex = 0;
 
-    // Cached slot dropdown — rebuilt whenever the scene selection changes
-    private string[] _SlotLabels = { "— no selection —" };
+    private string[] _SlotLabels = { "- no selection -" };
     private int[] _SlotIndices = { 0 };
-    private bool _SlotsMixed = false; // true when selected objects have different slot counts
+    private bool _SlotsMixed = false;
 
     //── Utilities : Round Transforms ─────────────────────────────────────────//
     private float RoundStep = 0.25f;
     private bool RoundPosition = true;
     private bool RoundRotation = true;
     private bool RoundScale = true;
+
+    //── Utilities : Select same asset ─────────────────────────────────────────//
+    private bool MatchRootOnly = false;
 
     //── Batch Renamer ─────────────────────────────────────────────────────────//
     private string RenamePrefix = "";
@@ -58,16 +59,12 @@ public class NgToolBox : EditorWindow
         GetWindow<NgToolBox>("Tool Box");
     }
 
-    // Called by Unity whenever the editor selection changes
     private void OnSelectionChange()
     {
         RebuildSlotDropdown();
         Repaint();
     }
 
-    // Builds _SlotLabels / _SlotIndices from the shared slots across all selected
-    // renderers. Uses the MINIMUM slot count so every entry is valid on every object.
-    // _SlotsMixed is flagged when objects disagree on total slot count.
     private void RebuildSlotDropdown()
     {
         GameObject[] Selected = Selection.gameObjects;
@@ -107,8 +104,6 @@ public class NgToolBox : EditorWindow
             return;
         }
 
-        // Label each slot using the first renderer as representative.
-        // Slots beyond MinSlots are excluded — they don't exist on every object.
         Material[] Mats = Renderers[0].sharedMaterials;
         _SlotLabels = new string[MinSlots];
         _SlotIndices = new int[MinSlots];
@@ -120,7 +115,6 @@ public class NgToolBox : EditorWindow
             _SlotIndices[i] = i;
         }
 
-        // Clamp remembered slot to the new valid range
         if (MaterialSlotIndex >= MinSlots)
             MaterialSlotIndex = 0;
     }
@@ -221,6 +215,30 @@ public class NgToolBox : EditorWindow
             EditorGUILayout.HelpBox("Round step must be greater than 0.", MessageType.Warning);
         else if (Selection.gameObjects.Length == 0)
             EditorGUILayout.HelpBox("Select objects in the scene.", MessageType.Info);
+
+        EditorGUILayout.Space(12);
+        DrawSeparator();
+        EditorGUILayout.Space(12);
+
+        //───────────────────────── Select Same Prefab / Mesh ──────────────────────//
+        GUILayout.Label("Select Matching Objects", EditorStyles.boldLabel);
+
+        MatchRootOnly = EditorGUILayout.ToggleLeft(
+            "Match prefab root only  (ignore instances on child objects)",
+            MatchRootOnly);
+
+        EditorGUI.BeginDisabledGroup(Selection.gameObjects.Length == 0);
+        if (GUILayout.Button("Select Same Prefab / Mesh"))
+            SelectSamePrefabOrMesh();
+        EditorGUI.EndDisabledGroup();
+
+        if (Selection.gameObjects.Length == 0)
+            EditorGUILayout.HelpBox("Select an object in the scene.", MessageType.Info);
+        else
+            EditorGUILayout.HelpBox(
+                "Selects all scene objects sharing the same prefab asset. " +
+                "Falls back to mesh comparison if the object is not a prefab instance.",
+                MessageType.None);
     }
 
     // =========================== BATCH RENAMER TAB ===========================//
@@ -257,6 +275,7 @@ public class NgToolBox : EditorWindow
 
         EditorGUILayout.Space(4);
         EditorGUILayout.LabelField($"Preview:  {BuildName("PrefabName", RenameIndexStart)}", EditorStyles.helpBox);
+        EditorGUILayout.LabelField($"Symbols:\n ^ = get everything after", EditorStyles.helpBox);
         EditorGUILayout.Space(2);
 
         if (GUILayout.Button("Rename"))
@@ -272,7 +291,7 @@ public class NgToolBox : EditorWindow
 
     private void DrawPrefabBatchTab()
     {
-        // Folder picker — accepts a DefaultAsset that maps to a folder
+        // Folder picker - accepts a DefaultAsset that maps to a folder
         PrefabFolder = (DefaultAsset)EditorGUILayout.ObjectField(
             "Prefab Folder", PrefabFolder, typeof(DefaultAsset), false);
 
@@ -322,6 +341,8 @@ public class NgToolBox : EditorWindow
             EditorGUILayout.HelpBox("Enable at least one operation above.", MessageType.Info);
     }
 
+
+
     //=========================== LOGIC ===========================//
 
     void ApplyMaterialToSelection()
@@ -339,7 +360,7 @@ public class NgToolBox : EditorWindow
             if (MaterialSlotIndex >= ObjRenderer.sharedMaterials.Length)
             {
                 Debug.LogWarning($"NgToolBox: '{Obj.name}' only has {ObjRenderer.sharedMaterials.Length} " +
-                                 $"material slot(s). Slot {MaterialSlotIndex} does not exist — skipped.");
+                                 $"material slot(s). Slot {MaterialSlotIndex} does not exist - skipped.");
                 continue;
             }
 
@@ -392,14 +413,22 @@ public class NgToolBox : EditorWindow
         int RenameIndex = RenameIndexStart;
         int RenamedCount = 0;
 
-        foreach (Object Asset in SelectedAssets)
+        AssetDatabase.StartAssetEditing();
+        try
         {
-            string AssetPath = AssetDatabase.GetAssetPath(Asset);
-            if (AssetDatabase.IsValidFolder(AssetPath)) { Debug.LogWarning($"NgToolBox: '{Asset.name}' is a folder — skipped."); continue; }
+            foreach (Object Asset in SelectedAssets)
+            {
+                string AssetPath = AssetDatabase.GetAssetPath(Asset);
+                if (AssetDatabase.IsValidFolder(AssetPath)) { Debug.LogWarning($"NgToolBox: '{Asset.name}' is a folder - skipped."); continue; }
 
-            string Error = AssetDatabase.RenameAsset(AssetPath, BuildName(Asset.name, RenameIndex));
-            if (string.IsNullOrEmpty(Error)) { RenamedCount++; RenameIndex++; }
-            else Debug.LogWarning($"NgToolBox: Could not rename '{Asset.name}': {Error}");
+                string Error = AssetDatabase.RenameAsset(AssetPath, BuildName(Asset.name, RenameIndex));
+                if (string.IsNullOrEmpty(Error)) { RenamedCount++; RenameIndex++; }
+                else Debug.LogWarning($"NgToolBox: Could not rename '{Asset.name}': {Error}");
+            }
+        }
+        finally
+        {
+            AssetDatabase.StopAssetEditing();
         }
 
         AssetDatabase.SaveAssets();
@@ -409,7 +438,24 @@ public class NgToolBox : EditorWindow
 
     string BuildName(string BaseName, int Index)
     {
-        string Result = string.IsNullOrEmpty(RenameFind) ? BaseName : BaseName.Replace(RenameFind, RenameReplace);
+        string Result = BaseName;
+
+        if (!string.IsNullOrEmpty(RenameFind))
+        {
+            if (RenameFind.EndsWith("^"))
+            {
+                string Token = RenameFind.Substring(0, RenameFind.Length - 1);
+
+                int TokenIndex = Result.IndexOf(Token);
+                if (TokenIndex >= 0)
+                    Result = Result.Substring(0, TokenIndex) + RenameReplace;
+            }
+            else
+            {
+                Result = Result.Replace(RenameFind, RenameReplace);
+            }
+        }
+
         Result = RenamePrefix + Result + RenameSuffix;
         if (RenameAddIndex) Result += $"_{Index}";
         return Result;
@@ -460,6 +506,143 @@ public class NgToolBox : EditorWindow
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
         Debug.Log($"NgToolBox: Batch edited {EditedCount} prefab(s) in '{FolderPath}'.");
+    }
+
+    void SelectSamePrefabOrMesh()
+    {
+        GameObject Source = Selection.activeGameObject;
+        if (Source == null) { Debug.LogWarning("NgToolBox: No active object selected."); return; }
+
+        GameObject SourcePrefabRoot =
+            PrefabUtility.GetCorrespondingObjectFromOriginalSource(Source) as GameObject;
+
+        if (SourcePrefabRoot != null)
+        {
+            IEnumerable<GameObject> Candidates;
+
+            if (MatchRootOnly)
+            {
+                GameObject InstanceRoot = PrefabUtility.GetNearestPrefabInstanceRoot(Source);
+                Transform Parent = InstanceRoot.transform.parent;
+
+                if (Parent == null)
+                {
+                    GameObject[] SceneRoots =
+                        UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects();
+
+                    List<GameObject> RootCandidates = new List<GameObject>(SceneRoots.Length);
+                    foreach (GameObject R in SceneRoots)
+                        if (PrefabUtility.IsPartOfPrefabInstance(R))
+                            RootCandidates.Add(R);
+
+                    Candidates = RootCandidates;
+                }
+                else
+                {
+                    List<GameObject> SiblingCandidates = new List<GameObject>(Parent.childCount);
+                    for (int i = 0; i < Parent.childCount; i++)
+                    {
+                        GameObject Child = Parent.GetChild(i).gameObject;
+                        if (PrefabUtility.IsPartOfPrefabInstance(Child))
+                            SiblingCandidates.Add(Child);
+                    }
+                    Candidates = SiblingCandidates;
+                }
+
+                List<GameObject> Matches = new List<GameObject>();
+                foreach (GameObject Go in Candidates)
+                {
+                    if (PrefabUtility.GetCorrespondingObjectFromOriginalSource(Go)
+                            as GameObject == SourcePrefabRoot)
+                        Matches.Add(Go);
+                }
+
+                if (Matches.Count > 0)
+                {
+                    Selection.objects = Matches.ToArray();
+                    Debug.Log($"NgToolBox: Selected {Matches.Count} sibling instance(s) of '{SourcePrefabRoot.name}' under '{(Parent != null ? Parent.name : "Scene Root")}'.");
+                    return;
+                }
+            }
+            else
+            {
+                GameObject[] AllObjects =
+                    FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+
+                List<GameObject> Matches = new List<GameObject>();
+                foreach (GameObject Go in AllObjects)
+                {
+                    if (!PrefabUtility.IsPartOfPrefabInstance(Go)) continue;
+                    if (PrefabUtility.GetCorrespondingObjectFromOriginalSource(Go)
+                            as GameObject == SourcePrefabRoot)
+                        Matches.Add(Go);
+                }
+
+                if (Matches.Count > 0)
+                {
+                    Selection.objects = Matches.ToArray();
+                    Debug.Log($"NgToolBox: Selected {Matches.Count} instance(s) of prefab '{SourcePrefabRoot.name}'.");
+                    return;
+                }
+            }
+        }
+
+        MeshFilter SourceMF = Source.GetComponent<MeshFilter>();
+        if (SourceMF == null || SourceMF.sharedMesh == null)
+        {
+            Debug.LogWarning("NgToolBox: Selected object is not a prefab instance and has no mesh - nothing to match.");
+            return;
+        }
+
+        Mesh TargetMesh = SourceMF.sharedMesh;
+
+        IEnumerable<MeshFilter> MeshCandidates;
+
+        if (MatchRootOnly)
+        {
+            Transform Parent = Source.transform.parent;
+            if (Parent == null)
+            {
+                GameObject[] SceneRoots =
+                    UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects();
+                List<MeshFilter> RootMFs = new List<MeshFilter>(SceneRoots.Length);
+                foreach (GameObject R in SceneRoots)
+                {
+                    MeshFilter MF = R.GetComponent<MeshFilter>();
+                    if (MF != null) RootMFs.Add(MF);
+                }
+                MeshCandidates = RootMFs;
+            }
+            else
+            {
+                List<MeshFilter> SiblingMFs = new List<MeshFilter>(Parent.childCount);
+                for (int i = 0; i < Parent.childCount; i++)
+                {
+                    MeshFilter MF = Parent.GetChild(i).GetComponent<MeshFilter>();
+                    if (MF != null) SiblingMFs.Add(MF);
+                }
+                MeshCandidates = SiblingMFs;
+            }
+        }
+        else
+        {
+            MeshCandidates = FindObjectsByType<MeshFilter>(FindObjectsSortMode.None);
+        }
+
+        List<GameObject> MeshMatches = new List<GameObject>();
+        foreach (MeshFilter MF in MeshCandidates)
+            if (MF.sharedMesh == TargetMesh)
+                MeshMatches.Add(MF.gameObject);
+
+        if (MeshMatches.Count > 0)
+        {
+            Selection.objects = MeshMatches.ToArray();
+            Debug.Log($"NgToolBox: Selected {MeshMatches.Count} object(s) sharing mesh '{TargetMesh.name}'.");
+        }
+        else
+        {
+            Debug.LogWarning($"NgToolBox: No matching objects found for mesh '{TargetMesh.name}'.");
+        }
     }
 
     //─────────────────────────── Helpers ─────────────────────────────────────//

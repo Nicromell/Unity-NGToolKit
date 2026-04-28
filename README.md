@@ -21,6 +21,8 @@ A Unity Editor window with productivity tools for scene and asset management. Op
 
 Assigns a material to a specific slot on all selected GameObjects at once.
 
+![Apply Material demo](ApplyMaterial.gif)
+
 **How to use:**
 1. Select one or more GameObjects in the scene
 2. Pick a material from the **Material** field

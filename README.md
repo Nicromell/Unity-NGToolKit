@@ -21,7 +21,7 @@ A Unity Editor window with productivity tools for scene and asset management. Op
 
 Assigns a material to a specific slot on all selected GameObjects at once.
 
-![Apply Material demo](ApplyMaterial.gif)
+![Apply Material demo](Gifs/ApplyMaterial.gif)
 
 **How to use:**
 1. Select one or more GameObjects in the scene
@@ -37,6 +37,8 @@ Assigns a material to a specific slot on all selected GameObjects at once.
 ---
 
 ### Round Transform Values
+
+![Round Transform demo](Gifs/RoundTransform.gif)
 
 Snaps Position, Rotation, and/or Scale values to the nearest multiple of a defined step, useful for cleaning up transforms after manual placement.
 
@@ -54,6 +56,8 @@ Snaps Position, Rotation, and/or Scale values to the nearest multiple of a defin
 ---
 
 ### Select Matching Objects
+
+![Select Matching demo](Gifs/SelectSamePrefab.gif)
 
 Expands the current selection to all scene objects that share the same prefab asset or mesh as the active object.
 
@@ -76,6 +80,10 @@ Expands the current selection to all scene objects that share the same prefab as
 ## Batch Renamer
 
 Renames multiple GameObjects (Inspector selection) or Project assets (Project window selection) in one operation.
+
+| Inspector | Project Folder |
+|---|---|
+| ![](Gifs/InspectorBatchRename.gif) | ![](Gifs/ProjectBatchRename.gif) |
 
 **Targets:**
 
